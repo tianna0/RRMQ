@@ -183,6 +183,8 @@ def request_vote():
 
     return jsonify({"term": raft_state["current_term"], "voteGranted": False})
 
+last_heartbeat = time.time()
+
 def restart_election_timer():
     """Clears and restarts the election timer."""
     global election_timer
@@ -206,7 +208,8 @@ def append_entries():
             raft_state["leader_id"] = leader_id
             raft_state["role"] = FOLLOWER
             raft_state["voted_for"] = None  # Reset votes
-            restart_election_timer()  # Reset election timeout
+            global last_heartbeat
+            last_heartbeat = time.time()  # Reset election timeout
 
             # Store and apply logs from leader
             for entry_dict in entries:
@@ -232,6 +235,8 @@ def start_election():
         with state_lock:
             if raft_state["role"] == LEADER:
                 continue  # No election needed if already leader
+            if time.time() - last_heartbeat < timeout:
+                continue  # Heard from a leader recently
 
             logging.info(f"Node {NODE_ID} starting an election (Term {raft_state['current_term'] + 1})")
             raft_state["role"] = CANDIDATE
@@ -338,4 +343,4 @@ if __name__ == '__main__':
     logging.info(f"Starting node on port {PORT}")
     election_thread = threading.Thread(target=start_election, daemon=True)
     election_thread.start()
-    app.run(host='0.0.0.0', port=PORT, debug=True)
+    app.run(host='0.0.0.0', port=PORT, debug=True, use_reloader=False)
